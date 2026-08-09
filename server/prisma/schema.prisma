@@ -1,0 +1,381 @@
+// NewsFlow relational model.
+//
+// Central idea: a real-world event is a `Story`; each publisher's coverage of it is a
+// `NewsArticle` attached to that story. Deduplication therefore *groups* articles instead
+// of deleting them, which is what makes "covered by 8 sources" and coverage comparison work.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+/// Soft-delete / moderation state. Admin "delete" hides rather than destroys so a
+/// re-ingest of the same URL cannot resurrect removed content.
+enum ArticleStatus {
+  PUBLISHED
+  HIDDEN
+  REMOVED
+}
+
+enum IngestionStatus {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(USER)
+  avatarUrl    String?
+  /// Set once the user has completed interest onboarding.
+  onboardedAt  DateTime?
+  lastLoginAt  DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  preferences    UserPreference[]
+  bookmarks      Bookmark[]
+  readingHistory ReadingHistory[]
+  refreshTokens  RefreshToken[]
+
+  @@index([createdAt])
+  @@map("users")
+}
+
+/// Refresh tokens are stored hashed so a database leak cannot be replayed.
+/// Rotation: on refresh the old row is revoked and a new one issued.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  /// Set when rotated or logged out; a revoked token presented again is a reuse signal.
+  revokedAt DateTime?
+  expiresAt DateTime
+  userAgent String?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Taxonomy and sources
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  /// Multiplier applied by the ranking algorithm (see pipeline/ranking.ts).
+  weight      Float   @default(1)
+  /// Display order in navigation.
+  position    Int     @default(0)
+  /// Show in the primary header nav vs. only in the "explore" list.
+  isPrimary   Boolean @default(false)
+  colorHex    String?
+  iconName    String?
+
+  /// Self-relation so "cricket" can live under "sports".
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+
+  articles    NewsArticle[]
+  stories     Story[]
+  preferences UserPreference[]
+
+  @@index([parentId])
+  @@index([position])
+  @@map("categories")
+}
+
+/// A publisher. Trust score feeds the ranking algorithm.
+model Source {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  slug     String  @unique
+  domain   String  @unique
+  homepage String?
+  logoUrl  String?
+  country  String?
+  language String  @default("en")
+  /// 0..1 editorial reliability weight used by ranking.
+  trustScore  Float   @default(0.5)
+  /// RSS endpoint, when this source is ingested via the RSS provider.
+  feedUrl     String?
+  /// Which provider adapter owns this source, e.g. "rss" or "worldnews".
+  providerKey String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  articles NewsArticle[]
+
+  @@index([isActive])
+  @@index([providerKey])
+  @@map("sources")
+}
+
+// ---------------------------------------------------------------------------
+// Stories and articles
+// ---------------------------------------------------------------------------
+
+/// A clustered real-world event. Denormalized counters (articleCount, sourceCount,
+/// viewCount) are maintained on write so feed queries never need aggregate subqueries.
+model Story {
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  /// Headline of the highest-trust article in the cluster.
+  title    String
+  summary  String?
+  imageUrl String?
+
+  /// Stable clustering key derived from the normalized title (see pipeline/dedupe.ts).
+  canonicalKey String   @unique
+  /// Bag of significant title tokens, used for cheap Jaccard candidate matching.
+  keyTokens    String[] @default([])
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  country  String?
+  language String  @default("en")
+
+  articleCount  Int @default(0)
+  sourceCount   Int @default(0)
+  viewCount     Int @default(0)
+  bookmarkCount Int @default(0)
+
+  importanceScore Float @default(0)
+  trendingScore   Float @default(0)
+
+  firstSeenAt     DateTime @default(now())
+  /// Newest publishedAt among member articles: the story's freshness anchor.
+  lastPublishedAt DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  /// Postgres GENERATED STORED tsvector, created by the fulltext_search migration.
+  /// Declared here (with its expression) so Prisma does not report drift. Never read
+  /// or written through the client: search goes through raw SQL in search.repository.ts.
+  searchVector Unsupported("tsvector")? @default(dbgenerated("(setweight(to_tsvector('english'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, COALESCE(summary, ''::text)), 'B'::\"char\"))")) @map("search_vector")
+
+  articles NewsArticle[]
+
+  @@index([lastPublishedAt(sort: Desc)])
+  @@index([importanceScore(sort: Desc)])
+  @@index([trendingScore(sort: Desc)])
+  @@index([categoryId, lastPublishedAt(sort: Desc)])
+  @@index([country, lastPublishedAt(sort: Desc)])
+  @@index([searchVector], map: "stories_search_vector_idx", type: Gin)
+  @@map("stories")
+}
+
+model NewsArticle {
+  id String @id @default(cuid())
+
+  /// Provider-supplied identifier, namespaced as "<provider>:<id>" to stay unique
+  /// across providers. Null for sources (like some RSS feeds) that supply none.
+  externalId String? @unique
+
+  title       String
+  description String?
+  /// Excerpt / summary only. Full copyrighted bodies are never stored; the UI always
+  /// links out to the publisher.
+  content     String?
+  /// True when `content` is a body the publisher licenses for redistribution.
+  isFullContent Boolean @default(false)
+
+  url          String
+  /// Tracking-param-stripped URL used for identity.
+  canonicalUrl String
+  /// SHA-1 of canonicalUrl. Unique, which makes re-ingestion idempotent.
+  urlHash      String @unique
+  /// SHA-1 of the normalized title. Non-unique: different publishers legitimately
+  /// share a headline, which is exactly the dedup signal we want to cluster on.
+  titleHash    String
+
+  imageUrl   String?
+  sourceName String
+  sourceUrl  String?
+  author     String?
+
+  country  String?
+  language String  @default("en")
+
+  /// Denormalized slug for fast filtering without a join.
+  category    String
+  subcategory String?
+
+  publishedAt DateTime
+  fetchedAt   DateTime @default(now())
+
+  importanceScore Float      @default(0)
+  sentiment       Sentiment?
+  /// Extracted topics/entities, populated by the optional AI enrichment step.
+  topics          String[]   @default([])
+
+  viewCount     Int @default(0)
+  bookmarkCount Int @default(0)
+
+  status ArticleStatus @default(PUBLISHED)
+  /// Which provider adapter produced this row (observability plus backfills).
+  providerKey String?
+
+  storyId String?
+  story   Story?  @relation(fields: [storyId], references: [id], onDelete: SetNull)
+
+  categoryId  String?
+  categoryRef Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  sourceId String?
+  source   Source? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Weighted, GENERATED STORED tsvector over title/description/content/sourceName.
+  /// See the fulltext_search migration; queried via raw SQL, never via the client.
+  searchVector Unsupported("tsvector")? @default(dbgenerated("(((setweight(to_tsvector('english'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, COALESCE(description, ''::text)), 'B'::\"char\")) || setweight(to_tsvector('english'::regconfig, COALESCE(content, ''::text)), 'C'::\"char\")) || setweight(to_tsvector('english'::regconfig, COALESCE(\"sourceName\", ''::text)), 'D'::\"char\"))")) @map("search_vector")
+
+  bookmarks      Bookmark[]
+  readingHistory ReadingHistory[]
+
+  // Indexes mirror the actual access patterns of the feed endpoints.
+  @@index([publishedAt(sort: Desc)])
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([category, publishedAt(sort: Desc)])
+  @@index([category, importanceScore(sort: Desc)])
+  @@index([country, publishedAt(sort: Desc)])
+  @@index([sourceName])
+  @@index([importanceScore(sort: Desc)])
+  @@index([titleHash])
+  @@index([storyId])
+  @@index([categoryId])
+  @@index([sourceId])
+  @@index([providerKey, fetchedAt])
+  // Full-text search index over the weighted tsvector above.
+  @@index([searchVector], map: "news_articles_search_vector_idx", type: Gin)
+  // Trigram index for the fuzzy fallback ("bitcon" -> "bitcoin").
+  @@index([title(ops: raw("gin_trgm_ops"))], map: "news_articles_title_trgm_idx", type: Gin)
+  @@map("news_articles")
+}
+
+// ---------------------------------------------------------------------------
+// Personalization
+// ---------------------------------------------------------------------------
+
+model UserPreference {
+  id         String   @id @default(cuid())
+  userId     String
+  categoryId String
+  /// Explicit interest strength; also nudged implicitly by reading history.
+  weight     Float    @default(1)
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([userId])
+  @@map("user_preferences")
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  articleId String
+  note      String?
+  createdAt DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([articleId])
+  @@map("bookmarks")
+}
+
+model ReadingHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  articleId    String
+  readAt       DateTime @default(now())
+  /// Seconds spent on the article page: a coarse engagement signal for the feed.
+  dwellSeconds Int?
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId, readAt(sort: Desc)])
+  @@index([articleId])
+  @@map("reading_history")
+}
+
+// ---------------------------------------------------------------------------
+// Observability
+// ---------------------------------------------------------------------------
+
+/// One row per provider per fetch cycle. Powers the admin ingestion panel,
+/// the failed-providers view, and API-usage accounting.
+model IngestionRun {
+  id          String          @id @default(cuid())
+  providerKey String
+  status      IngestionStatus @default(RUNNING)
+
+  fetchedCount   Int @default(0)
+  storedCount    Int @default(0)
+  updatedCount   Int @default(0)
+  duplicateCount Int @default(0)
+  rejectedCount  Int @default(0)
+  /// Number of upstream HTTP calls made, which approximates provider quota burn.
+  requestCount   Int @default(0)
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+
+  errorMessage String?
+  /// Per-feed / per-endpoint detail, kept as JSON so provider shapes can differ.
+  details      Json?
+
+  @@index([providerKey, startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+  @@map("ingestion_runs")
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>NewsFlow - Today's news from India and the world</title>
+    <meta
+      name="description"
+      content="The most important news from India and around the world, organised by topic and compared across sources."
+    />
+    <meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23dc2626'/%3E%3Cpath d='M9 23V9h3.4l6.2 8.5V9H22v14h-3.4L12.4 14.5V23z' fill='white'/%3E%3C/svg%3E" />
+
+    <script>
+      // Applies the saved theme before first paint. Without this the page renders in
+      // light mode and then flips, which is a visible flash on every load.
+      (function () {
+        try {
+          var stored = localStorage.getItem('newsflow-theme');
+          var theme = stored ? JSON.parse(stored).state.theme : 'system';
+          var dark =
+            theme === 'dark' ||
+            (theme === 'system' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {
+          /* localStorage unavailable (private mode): fall back to light. */
+        }
+      })();
+    </script>
+  </head>
+  <body class="h-full">
+    <div id="root" class="min-h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

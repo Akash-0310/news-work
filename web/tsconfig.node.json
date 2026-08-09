@@ -1,0 +1,22 @@
+{
+  /**
+   * Build-tooling config. Standalone rather than a project reference: a referenced
+   * project must be `composite`, and a composite project may not set `noEmit`, so the
+   * reference form would force this config to emit build artefacts nobody consumes.
+   * `npm run typecheck` checks both configs explicitly instead.
+   */
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true
+  },
+  "include": ["vite.config.ts"]
+}

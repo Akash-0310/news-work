@@ -1,0 +1,170 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode. Tailwind v4 defaults to the `prefers-color-scheme` media
+   query, which cannot be overridden by a user toggle, so we bind the variant to a
+   `.dark` class on <html> that the theme store controls. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens
+
+   An editorial look: serif headlines for authority, a clean sans for UI, and a
+   restrained palette so the category colours (which come from the database) are
+   the only strong hues on the page.
+   --------------------------------------------------------------------------- */
+@theme {
+  /* Serif for headlines is the single biggest signal that this is a news product
+     rather than a dashboard. All stacks are system fonts: no network request, no
+     layout shift, works offline. */
+  --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
+    'Times New Roman', serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  /* Brand red: used only for the wordmark, breaking news and the active nav
+     indicator, so it never competes with category colours. */
+  --color-brand-50: oklch(0.971 0.013 17.4);
+  --color-brand-100: oklch(0.936 0.032 17.7);
+  --color-brand-200: oklch(0.885 0.062 18.3);
+  --color-brand-300: oklch(0.808 0.114 19.6);
+  --color-brand-400: oklch(0.704 0.191 22.2);
+  --color-brand-500: oklch(0.637 0.237 25.3);
+  --color-brand-600: oklch(0.577 0.245 27.3);
+  --color-brand-700: oklch(0.505 0.213 27.5);
+  --color-brand-800: oklch(0.444 0.177 26.9);
+  --color-brand-900: oklch(0.396 0.141 25.7);
+
+  /* Slightly warm neutrals read better for long-form text than pure grey. */
+  --color-ink-50: oklch(0.985 0.002 90);
+  --color-ink-100: oklch(0.967 0.003 90);
+  --color-ink-200: oklch(0.922 0.004 90);
+  --color-ink-300: oklch(0.87 0.005 90);
+  --color-ink-400: oklch(0.708 0.006 90);
+  --color-ink-500: oklch(0.556 0.006 90);
+  --color-ink-600: oklch(0.439 0.006 90);
+  --color-ink-700: oklch(0.371 0.006 90);
+  --color-ink-800: oklch(0.269 0.005 90);
+  --color-ink-900: oklch(0.205 0.004 90);
+  --color-ink-950: oklch(0.145 0.003 90);
+
+  --radius-card: 0.75rem;
+
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-fade-up: fade-up 0.35s ease-out both;
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    /* Semantic surfaces, referenced through arbitrary values below so light and dark
+       are defined once here rather than as a dark: variant on every element. */
+    --surface: var(--color-white);
+    --surface-raised: var(--color-white);
+    --surface-sunken: var(--color-ink-50);
+    --border-subtle: var(--color-ink-200);
+    --text-primary: var(--color-ink-950);
+    --text-secondary: var(--color-ink-600);
+    --text-muted: var(--color-ink-500);
+  }
+
+  .dark {
+    --surface: oklch(0.16 0.004 90);
+    --surface-raised: oklch(0.205 0.004 90);
+    --surface-sunken: oklch(0.13 0.003 90);
+    --border-subtle: oklch(0.3 0.005 90);
+    --text-primary: var(--color-ink-50);
+    --text-secondary: var(--color-ink-300);
+    --text-muted: var(--color-ink-400);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Respect users who have asked for reduced motion: disable transitions rather
+     than shipping animation they explicitly opted out of. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  body {
+    background-color: var(--surface);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* A visible, consistent focus ring everywhere. Keyboard navigation is a stated
+     requirement, and the browser default is invisible on dark surfaces. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-500);
+    color: white;
+  }
+}
+
+@layer components {
+  /* Clamp helpers. Used constantly by cards, so worth naming rather than repeating
+     the four-property recipe inline. */
+  .line-clamp-safe-2,
+  .line-clamp-safe-3 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-safe-2 {
+    -webkit-line-clamp: 2;
+  }
+  .line-clamp-safe-3 {
+    -webkit-line-clamp: 3;
+  }
+
+  /* Horizontal category rail on mobile: scrollable but without a visible scrollbar. */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

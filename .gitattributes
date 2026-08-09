@@ -1,0 +1,30 @@
+# Normalize line endings.
+#
+# Without this, every file committed from Windows carries CRLF and every diff from a
+# macOS/Linux contributor rewrites whole files. Text is stored as LF in the repository
+# and checked out with the platform's native endings.
+* text=auto eol=lf
+
+# Shell scripts and Dockerfiles must keep LF even on Windows checkouts: CRLF breaks
+# the shebang line inside a Linux container.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Binary assets: never diffed, never line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Generated: collapse lockfile noise in pull requests while keeping it in the repo.
+package-lock.json linguist-generated=true -diff
+
+# Prisma migrations are SQL, not the repo's primary language.
+*.sql linguist-language=SQL
