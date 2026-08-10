@@ -1,0 +1,45 @@
+# Both images build with the repository root as their context (npm workspace: `npm ci`
+# needs the root package-lock.json), so Docker reads THIS file. Per-package
+# .dockerignore files would be silently ignored.
+#
+# Keeping the context small is the biggest single build speedup available here:
+# node_modules alone is hundreds of megabytes and is reinstalled inside the image.
+
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/*.tsbuildinfo
+
+# Never bake real secrets into an image layer. .env.example is allowed through.
+.env
+.env.local
+.env.*.local
+
+.git
+.gitignore
+.gitattributes
+.github
+
+coverage
+**/coverage
+.nyc_output
+
+*.log
+logs
+npm-debug.log*
+
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Docker's own files never need to be inside the image.
+docker-compose.yml
+docker-compose.*.yml
+**/Dockerfile
+.dockerignore
+
+# Tests are not run inside the runtime image.
+server/tests

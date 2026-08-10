@@ -34,8 +34,10 @@ services:
 
   server:
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      # Context is the repository root, not server/: this is an npm workspace and
+      # `npm ci` needs the root package-lock.json to install reproducibly.
+      context: .
+      dockerfile: server/Dockerfile
       target: runtime
     container_name: newsflow-server
     restart: unless-stopped
@@ -63,10 +65,14 @@ services:
       retries: 5
       start_period: 30s
 
+  # Ingestion workers. Behind a profile until Phase 3 ships dist/workers/index.js:
+  # without this, `docker compose up` would start a container that crash-loops on a
+  # missing entrypoint. Enable with: docker compose --profile worker up
   worker:
+    profiles: ['worker']
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
       target: runtime
     container_name: newsflow-worker
     restart: unless-stopped
@@ -87,8 +93,8 @@ services:
 
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: web/Dockerfile
       args:
         # Baked at build time — Vite inlines VITE_* into the bundle.
         VITE_API_BASE_URL: http://localhost:4000/api

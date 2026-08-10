@@ -104,7 +104,9 @@ const start = async (): Promise<void> => {
   logger.info(
     {
       port: env.PORT,
-      env: env.NODE_ENV,
+      // `env` is deliberately omitted: the logger's `base` already emits it, and
+      // repeating it here produced a duplicate key in the JSON line, which log
+      // aggregators resolve inconsistently (last-wins, first-wins, or parse error).
       clientUrl: env.CLIENT_URL,
       providers: env.enabledProviders,
     },
