@@ -33,8 +33,16 @@ const normalizePrismaError = (error: unknown): Normalized | null => {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     switch (error.code) {
       case 'P2002': {
-        const target = error.meta?.['target'];
-        const fields = Array.isArray(target) ? target.join(', ') : String(target ?? 'field');
+        // `meta.target` is typed as unknown and varies by connector: an array of
+        // column names, a single string, or absent. Passing an object through
+        // String() would put a literal "[object Object]" in the client's error
+        // message, so each shape is handled explicitly.
+        const target: unknown = error.meta?.target;
+        const fields = Array.isArray(target)
+          ? target.filter((entry): entry is string => typeof entry === 'string').join(', ')
+          : typeof target === 'string'
+            ? target
+            : 'field';
         return {
           statusCode: 409,
           message: `A record with this ${fields} already exists`,

@@ -1,15 +1,12 @@
 import { defineConfig } from 'vitest/config';
 
+/**
+ * No `resolve.extensionAlias` is needed here. The source uses native-ESM specifiers
+ * (`./text.js` pointing at `text.ts`) so that `tsc` output runs under node without a
+ * loader, and Vitest 4 resolves that mapping natively. An explicit `extensionAlias`
+ * also is not in Vitest 4's `resolve` types, so adding it back breaks `tsc --noEmit`.
+ */
 export default defineConfig({
-  resolve: {
-    /**
-     * The source uses native-ESM import specifiers (`./text.js` referring to
-     * `text.ts`), which is what lets `tsc` emit a `dist/` that Node runs without a
-     * loader. Vite resolves paths literally, so without this mapping every such import
-     * fails during tests with "file not found".
-     */
-    extensionAlias: { '.js': ['.ts', '.js'] },
-  },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

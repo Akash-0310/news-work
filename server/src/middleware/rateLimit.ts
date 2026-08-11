@@ -55,8 +55,10 @@ export const rateLimit = (options: RateLimitOptions = {}): RequestHandler => {
         // transaction was discarded.
         const results = await redis.multi().incr(key).expire(key, windowSeconds).exec();
 
+        // Optional chaining covers both a discarded transaction (`results` null) and
+        // an INCR that errored: either way the element is not `null`.
         const incrResult = results?.[0];
-        if (!incrResult || incrResult[0] !== null) {
+        if (incrResult?.[0] !== null) {
           // Transaction discarded or INCR errored: fail open rather than block traffic.
           next();
           return;

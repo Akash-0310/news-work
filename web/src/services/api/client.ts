@@ -1,5 +1,5 @@
 import axios, {
-  AxiosError,
+  type AxiosError,
   type AxiosInstance,
   type AxiosRequestConfig,
   type AxiosResponse,
@@ -70,7 +70,7 @@ const isErrorResponse = (value: unknown): value is ErrorResponse =>
   typeof value === 'object' &&
   value !== null &&
   'success' in value &&
-  (value as { success: unknown }).success === false;
+  (value).success === false;
 
 const toApiError = (error: unknown): ApiError => {
   if (error instanceof ApiError) return error;

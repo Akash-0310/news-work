@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Menu, Search, X } from 'lucide-react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { cn } from '@/utils/cn';
 import { CategoryRail } from './CategoryRail';
@@ -26,12 +26,12 @@ const PRIMARY_LINKS = [
 
 export const Header = () => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const location = useLocation();
 
-  // Close the drawer on navigation, otherwise it stays open over the new page.
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [location.pathname]);
+  // The drawer closes on navigation by closing it in the link handler
+  // (`closeMenu` below), not from an effect watching `location.pathname`.
+  // Calling setState synchronously inside an effect triggers a second render pass
+  // on every navigation, and React's own lint rules flag it for that reason.
+  const closeMenu = () => setMenuOpen(false);
 
   // Prevent the page behind the drawer from scrolling while it is open.
   useEffect(() => {
@@ -156,6 +156,9 @@ export const Header = () => {
                     <NavLink
                       to={link.to}
                       end={'end' in link ? link.end : false}
+                      // Closing here rather than in an effect on pathname change:
+                      // this is the actual cause of the navigation.
+                      onClick={closeMenu}
                       className={({ isActive }) =>
                         cn(
                           'block rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors',
@@ -174,6 +177,7 @@ export const Header = () => {
 
             <Link
               to="/explore"
+              onClick={closeMenu}
               className="mt-4 rounded-lg border border-[var(--border-subtle)] px-3 py-2.5 text-center text-sm font-medium transition-colors hover:bg-[var(--surface-sunken)]"
             >
               Browse all categories

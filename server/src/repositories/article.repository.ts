@@ -1,5 +1,5 @@
 import type { ArticleStatus } from '@prisma/client';
-import { Prisma, prisma } from '../config/prisma.js';
+import { type Prisma, prisma } from '../config/prisma.js';
 import type { ArticleQuery, ArticleSort, PageResult } from '../types/domain.js';
 
 /**

@@ -1,4 +1,4 @@
-import { Prisma, prisma } from '../config/prisma.js';
+import { type Prisma, prisma } from '../config/prisma.js';
 
 /**
  * Category persistence.

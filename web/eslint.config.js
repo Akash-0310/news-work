@@ -1,4 +1,3 @@
-import js from '@eslint/js';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
@@ -13,10 +12,11 @@ import tseslint from 'typescript-eslint';
  */
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
+    // eslint.config.js is excluded because type-aware rules require every linted file
+    // to belong to a tsconfig, and this file is plain JS.
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'eslint.config.js'],
   },
 
-  js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
 
   {
@@ -74,9 +74,12 @@ export default tseslint.config(
   },
 
   {
-    // Vite config runs in Node, not the browser.
-    files: ['vite.config.ts', 'eslint.config.js'],
+    // Vite config runs in Node, not the browser, and belongs to tsconfig.node.json
+    // rather than the app's tsconfig. Type-aware rules are disabled for it because the
+    // project service resolves files against the nearest tsconfig.json, which does not
+    // include it. It is still type-checked by `npm run typecheck`.
+    files: ['vite.config.ts'],
+    extends: [tseslint.configs.disableTypeChecked],
     languageOptions: { globals: globals.node },
-    rules: { '@typescript-eslint/no-unsafe-assignment': 'off' },
   },
 );

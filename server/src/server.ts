@@ -34,6 +34,8 @@ const isSystemError = (error: unknown): error is SystemError =>
 const describeListenError = (error: unknown, port: number): string => {
   if (!isSystemError(error)) return toErrorMessage(error);
 
+  // `code` is optional on a Node system error, so `undefined` is a reachable case and
+  // must fall through to the default branch below.
   switch (error.code) {
     case 'EADDRINUSE':
       return [

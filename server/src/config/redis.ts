@@ -51,9 +51,7 @@ if (!env.isProduction) {
  * normal commands, so breaking-news fan-out needs its own socket.
  */
 export const getSubscriber = (): Redis => {
-  if (!globalForRedis.redisSub) {
-    globalForRedis.redisSub = createClient('subscriber');
-  }
+  globalForRedis.redisSub ??= createClient('subscriber');
   return globalForRedis.redisSub;
 };
 

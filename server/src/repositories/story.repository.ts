@@ -1,4 +1,4 @@
-import { Prisma, prisma } from '../config/prisma.js';
+import { type Prisma, prisma } from '../config/prisma.js';
 import type { PageResult } from '../types/domain.js';
 import { articleSelect, type ArticleRecord } from './article.repository.js';
 

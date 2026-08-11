@@ -31,5 +31,8 @@
     "verbatimModuleSyntax": false,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts"]
+  // `*.config.ts` is included so vitest.config.ts and prisma.config.ts are both
+  // type-checked and reachable by type-aware ESLint, which requires every linted file
+  // to belong to a tsconfig.
+  "include": ["src/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts", "*.config.ts"]
 }
