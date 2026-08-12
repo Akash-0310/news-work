@@ -42,18 +42,37 @@ export const buildPagination = (page: number, limit: number, total: number): Pag
   };
 };
 
+/**
+ * These helpers return `void`, not the Express `Response`.
+ *
+ * Express declares `Response` with `any` type parameters, so returning it would hand
+ * every caller an unchecked value and defeat the whole point of the typed envelope.
+ * Nothing uses the return value -- controllers call these as statements -- so `void`
+ * costs nothing and keeps the boundary type-safe.
+ *
+ * The body arguments are still checked against SuccessBody/ErrorBody below, which is
+ * where the contract actually matters.
+ */
+
 export const ok = <T>(
   res: Response,
   data: T,
   message = 'Success',
   meta?: Record<string, unknown>,
-): Response<SuccessBody<T>> => res.status(200).json({ success: true, data, message, ...(meta ? { meta } : {}) });
+): void => {
+  const body: SuccessBody<T> = { success: true, data, message, ...(meta ? { meta } : {}) };
+  res.status(200).json(body);
+};
 
-export const created = <T>(res: Response, data: T, message = 'Created'): Response<SuccessBody<T>> =>
-  res.status(201).json({ success: true, data, message });
+export const created = <T>(res: Response, data: T, message = 'Created'): void => {
+  const body: SuccessBody<T> = { success: true, data, message };
+  res.status(201).json(body);
+};
 
-export const noContent = (res: Response, message = 'Deleted'): Response<SuccessBody<null>> =>
-  res.status(200).json({ success: true, data: null, message });
+export const noContent = (res: Response, message = 'Deleted'): void => {
+  const body: SuccessBody<null> = { success: true, data: null, message };
+  res.status(200).json(body);
+};
 
 export const paginated = <T>(
   res: Response,
@@ -61,14 +80,16 @@ export const paginated = <T>(
   pagination: PaginationMeta,
   message = 'Success',
   meta?: Record<string, unknown>,
-): Response<SuccessBody<T[]>> =>
-  res.status(200).json({
+): void => {
+  const body: SuccessBody<T[]> = {
     success: true,
     data,
     pagination,
     message,
     ...(meta ? { meta } : {}),
-  });
+  };
+  res.status(200).json(body);
+};
 
 export const fail = (
   res: Response,
@@ -76,10 +97,12 @@ export const fail = (
   message: string,
   errorCode: ErrorCode,
   details?: unknown,
-): Response<ErrorBody> =>
-  res.status(statusCode).json({
+): void => {
+  const body: ErrorBody = {
     success: false,
     message,
     errorCode,
     ...(details === undefined ? {} : { details }),
-  });
+  };
+  res.status(statusCode).json(body);
+};

@@ -85,9 +85,11 @@ export const connectRedis = async (): Promise<void> => {
 export const checkRedis = async (): Promise<{ ok: boolean; latencyMs: number; error?: string }> => {
   const startedAt = process.hrtime.bigint();
   try {
-    const pong = await redis.ping();
+    // A successful PING resolves to the literal "PONG"; any problem rejects instead,
+    // so reaching this line is itself the success signal.
+    await redis.ping();
     return {
-      ok: pong === 'PONG',
+      ok: true,
       latencyMs: Math.round(Number(process.hrtime.bigint() - startedAt) / 1e5) / 10,
     };
   } catch (error) {

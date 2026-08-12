@@ -35,7 +35,8 @@ export class AppError extends Error {
     this.statusCode = statusCode;
     this.errorCode = errorCode;
     this.details = details;
-    Error.captureStackTrace?.(this, new.target);
+    // V8-only, but @types/node declares it as always present, so no guard is needed.
+    Error.captureStackTrace(this, new.target);
   }
 }
 

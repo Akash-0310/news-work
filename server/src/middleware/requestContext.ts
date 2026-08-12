@@ -36,9 +36,16 @@ export const requestLogger: RequestHandler = pinoHttp({
     return 'info';
   },
   customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+  // pino-http types its serializer parameters as `any`, which silently turns every
+  // field access below into an unchecked read. Annotating them structurally restores
+  // type checking without needing pino's internal types.
   serializers: {
-    req: (req) => ({ id: req.id, method: req.method, url: req.url }),
-    res: (res) => ({ statusCode: res.statusCode }),
+    req: (req: { id?: unknown; method?: string; url?: string }) => ({
+      id: req.id,
+      method: req.method,
+      url: req.url,
+    }),
+    res: (res: { statusCode?: number }) => ({ statusCode: res.statusCode }),
   },
 });
 
@@ -50,11 +57,20 @@ export const responseTimeMetrics: RequestHandler = (req, res, next) => {
   const startedAt = process.hrtime.bigint();
   res.once('finish', () => {
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
-    // `req.route` is only populated once a handler matched; fall back to the raw path.
-    const routePath = req.route?.path ?? req.path;
+    // `req.route` is only populated once a handler matched, and Express types it as
+    // `any`. Narrow it explicitly so the path read below is checked; fall back to the
+    // raw path for unmatched requests (404s), which have no route.
+    const route: unknown = req.route;
+    const routePath =
+      typeof route === 'object' && route !== null && 'path' in route && typeof route.path === 'string'
+        ? route.path
+        : req.path;
+
     recordRequest({
       method: req.method,
-      route: `${req.baseUrl ?? ''}${typeof routePath === 'string' ? routePath : ''}` || req.path,
+      // Grouping by route template rather than by concrete URL is what keeps the
+      // metrics registry's cardinality bounded.
+      route: `${req.baseUrl}${routePath}` || req.path,
       statusCode: res.statusCode,
       durationMs,
     });

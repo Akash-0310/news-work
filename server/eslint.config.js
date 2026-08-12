@@ -64,27 +64,15 @@ export default tseslint.config(
       'no-constant-binary-expression': 'error',
 
       // --- the project's stated "no any" requirement ---------------------------
-      // An explicit `any` written by hand stays an error: that is always a choice.
+      // These are all 'error'. The codebase is clean against them, so any new `any`
+      // leaking in from an untyped library boundary fails the build rather than
+      // quietly spreading: an `any` is contagious, and one unchecked value at a
+      // boundary silently disables type checking for everything downstream of it.
       '@typescript-eslint/no-explicit-any': 'error',
-
-      // The no-unsafe-* family is 'warn' rather than 'error', deliberately and
-      // temporarily. Enabling it surfaced two genuine issues that need real fixes,
-      // and blocking every commit until then would just get lint disabled:
-      //
-      //   1. `withDateRangeCheck` in validators/common.validators.ts is generic over
-      //      `ZodTypeAny` and returns a loosely-typed schema, so `z.infer` of the
-      //      exported query schemas collapses to `any`. The controllers therefore
-      //      only *look* strongly typed -- validated query fields are unchecked.
-      //      Fix: make the helper generic over ZodObject and preserve its shape.
-      //   2. Express's `Response` is declared with `any` type parameters, so the
-      //      helpers in utils/response.ts cannot return a precisely typed Response.
-      //
-      // Track these down to 'error' once (1) is fixed; (2) may need a local
-      // eslint-disable with a reason.
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
-      '@typescript-eslint/no-unsafe-return': 'warn',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
 
       // --- hygiene ------------------------------------------------------------
       '@typescript-eslint/no-unused-vars': [

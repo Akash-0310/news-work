@@ -96,11 +96,33 @@ export const searchTermSchema = z
   .max(120)
   .transform((value) => value.replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').trim());
 
-/** Rejects a `to` earlier than `from` rather than silently returning an empty page. */
-export const withDateRangeCheck = <T extends z.ZodTypeAny>(schema: T) =>
-  schema.superRefine((value, ctx) => {
-    const range = value as { from?: Date; to?: Date };
-    if (range.from && range.to && range.from > range.to) {
+/**
+ * Shape a schema must have for the date-range check to be meaningful.
+ *
+ * Declaring it explicitly means a caller that forgets `from`/`to` gets a compile
+ * error, rather than a refinement that silently never fires.
+ */
+interface DateRange {
+  from?: Date | undefined;
+  to?: Date | undefined;
+}
+
+/**
+ * Rejects a `to` earlier than `from` rather than silently returning an empty page.
+ *
+ * The generic is constrained to `ZodObject` rather than `ZodTypeAny`. That matters far
+ * more than it looks: with `ZodTypeAny`, TypeScript could not resolve the concrete
+ * output type through `superRefine`, so `z.infer` of every schema wrapped by this
+ * helper collapsed to `any`. Each controller then destructured an `any` query object,
+ * meaning none of the validated fields were actually type-checked and a typo like
+ * `query.pge` compiled cleanly. Constraining to ZodObject preserves the shape and
+ * restores real types across all of them.
+ */
+export const withDateRangeCheck = <Shape extends z.ZodRawShape>(
+  schema: z.ZodObject<Shape>,
+) =>
+  schema.superRefine((value: DateRange, ctx) => {
+    if (value.from && value.to && value.from > value.to) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['to'],
