@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege: this workflow only reads the repository.
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes the previous run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Real Postgres and Redis rather than mocks: the schema includes generated
+    # tsvector columns and GIN indexes that only a real database can validate, and
+    # migrations are exactly the thing worth testing before a deploy.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: newsflow
+          POSTGRES_PASSWORD: newsflow
+          POSTGRES_DB: newsflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U newsflow -d newsflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://newsflow:newsflow@localhost:5432/newsflow?schema=public
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+      # Test-only values. Production boot refuses placeholder secrets (see config/env.ts).
+      JWT_SECRET: ci-only-access-secret-not-used-anywhere-real-000000
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-used-anywhere-real-111111
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Generated code, so it must exist before anything type-checks against it.
+      - name: Generate Prisma client
+        run: npx prisma generate --schema server/prisma/schema.prisma
+
+      - name: Apply migrations
+        run: npm run db:deploy
+
+      # Doubles as an integration test of the schema, the ranking pipeline and the
+      # dedup key helpers: the seed writes through the same functions ingestion uses.
+      - name: Seed database
+        run: npm run db:seed
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Build server
+        run: npm run build --workspace server
+
+      - name: Build web
+        run: npm run build --workspace web
+
+  docker:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # No point building images if the code does not pass.
+    needs: verify
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only: nothing is pushed to a registry. This catches Dockerfile
+      # regressions, which are otherwise only discovered at deploy time.
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          target: runtime
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: web/Dockerfile
+          push: false
+          build-args: |
+            VITE_API_BASE_URL=http://localhost:4000/api
+            VITE_WS_URL=ws://localhost:4000
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
